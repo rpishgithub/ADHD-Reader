@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100vh;
+            background: #f5f5dc;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #editor {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            z-index: 2;
+            font-size: 32px;
+            padding-left: 300px;
+            padding-right: 300px;
+            padding-top: 100px;
+            border: none;
+            outline: none;
+            resize: none;
+            background: transparent;
+            color: transparent;
+            caret-color: #000;
+        }
+
+        #display {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding-left: 300px;
+            padding-right: 300px;
+            padding-top: 100px;
+            font-size: 32px;
+            color: #000;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .line {
+            display: flex;
+            min-height: 1.2em;
+        }
+
+        .char {
+            position: relative;
+            white-space: pre-wrap;
+        }
+
+        .cursor {
+            position: absolute;
+            width: 2px;
+            height: 1.2em;
+            background: #000;
+            animation: blink 1s infinite;
+            transition: left 0.05s, top 0.05s;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        .new-char {
+            animation: flash 0.3s ease-out;
+        }
+
+        @keyframes flash {
+            0% { opacity: 0; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <textarea id="editor"></textarea>
+    <div id="display"></div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const display = document.getElementById('display');
+        let typewriter = {
+            isActive: false,
+            isPaused: false,
+            timeoutId: null,
+            targetText: '',
+            index: 0
+        };
+
+        // 初始化
+        editor.focus();
+        setupEventListeners();
+        updateDisplay();
+
+        function setupEventListeners() {
+            // 实时同步事件
+            editor.addEventListener('input', handleInput);
+            editor.addEventListener('scroll', syncScroll);
+            editor.addEventListener('keydown', handleKeyDown);
+            editor.addEventListener('keyup', updateCursor);
+            editor.addEventListener('mouseup', updateCursor);
+            
+            // 定时更新光标位置
+            setInterval(updateCursor, 50);
+        }
+
+        function handleInput() {
+            if (!typewriter.isActive) {
+                updateDisplay();
+                updateCursor();
+            }
+        }
+
+        function handleKeyDown(e) {
+            // 打字机模式控制
+            if (typewriter.isActive) {
+                handleTypewriterControls(e);
+            }
+            // 实时模式控制
+            else {
+                // 回车换行处理
+                if (!(e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    setTimeout(() => {
+                        updateDisplay();
+                        updateCursor();
+                    }, 0);
+                }
+                // 方向键立即更新
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                    requestAnimationFrame(updateCursor);
+                }
+            }
+        }
+
+        function updateDisplay() {
+            const text = editor.value;
+            const lines = text.split('\n');
+            
+            display.innerHTML = lines.map(line => 
+                `<div class="line">${
+                    line.split('').map(c => 
+                        `<span class="char">${c}</span>`
+                    ).join('')
+                }</div>`
+            ).join('') + '<span class="cursor"></span>';
+        }
+
+        function updateCursor() {
+            if (typewriter.isActive) return;
+            
+            const cursorPos = editor.selectionStart;
+            const text = editor.value;
+            const lines = text.slice(0, cursorPos).split('\n');
+            const lineIndex = lines.length - 1;
+            const colIndex = lines[lineIndex].length;
+            
+            const lineElements = display.querySelectorAll('.line');
+            const cursor = display.querySelector('.cursor');
+            
+            if (lineElements[lineIndex]) {
+                const chars = lineElements[lineIndex].querySelectorAll('.char');
+                const lineRect = lineElements[lineIndex].getBoundingClientRect();
+                
+                let xPos = lineRect.left;
+                let yPos = lineRect.top;
+                
+                if (chars[colIndex]) {
+                    const charRect = chars[colIndex].getBoundingClientRect();
+                    xPos = charRect.left;
+                    yPos = charRect.top;
+                } else if (chars.length > 0) {
+                    const lastChar = chars[chars.length - 1];
+                    const charRect = lastChar.getBoundingClientRect();
+                    xPos = charRect.right;
+                    yPos = charRect.top;
+                }
+                
+                cursor.style.left = `${xPos}px`;
+                cursor.style.top = `${yPos}px`;
+            }
+        }
+
+        function syncScroll() {
+            display.scrollTop = editor.scrollTop;
+            display.scrollLeft = editor.scrollLeft;
+        }
+
+        // 打字机功能部分
+        function handleTypewriterControls(e) {
+            if (e.key === ' ') {
+                e.preventDefault();
+                typewriter.isPaused = !typewriter.isPaused;
+                if (!typewriter.isPaused) typeCharacter();
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                exitTypewriter();
+            }
+        }
+
+        function startTypewriterEffect() {
+            typewriter = {
+                isActive: true,
+                isPaused: false,
+                timeoutId: null,
+                targetText: editor.value,
+                index: 0
+            };
+            
+            editor.value = '';
+            display.innerHTML = '';
+            typeCharacter();
+        }
+
+        function typeCharacter() {
+            if (!typewriter.isActive || typewriter.isPaused) return;
+
+            if (typewriter.index < typewriter.targetText.length) {
+                const char = typewriter.targetText[typewriter.index];
+                editor.value += char;
+                
+                const charSpan = document.createElement('span');
+                charSpan.className = 'char new-char';
+                charSpan.textContent = char;
+                display.appendChild(charSpan);
+                
+                typewriter.index++;
+                typewriter.timeoutId = setTimeout(typeCharacter, 100);
+                updateCursor();
+            } else {
+                finishTypewriter();
+            }
+        }
+
+        function finishTypewriter() {
+            typewriter.isActive = false;
+            display.innerHTML += '<span class="cursor"></span>';
+            editor.dispatchEvent(new Event('input'));
+        }
+
+        function exitTypewriter() {
+            clearTimeout(typewriter.timeoutId);
+            const remaining = typewriter.targetText.slice(typewriter.index);
+            editor.value += remaining;
+            
+            remaining.split('').forEach(char => {
+                const charSpan = document.createElement('span');
+                charSpan.className = 'char';
+                charSpan.textContent = char;
+                display.appendChild(charSpan);
+            });
+            
+            finishTypewriter();
+        }
+
+        // 快捷键绑定
+        editor.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                if (!typewriter.isActive) {
+                    startTypewriterEffect();
+                }
+            }
+        });
+
+        // 窗口适应
+        window.addEventListener('resize', () => {
+            editor.style.height = `${window.innerHeight}px`;
+            updateDisplay();
+            updateCursor();
+        });
+    </script>
+</body>
+</html>
