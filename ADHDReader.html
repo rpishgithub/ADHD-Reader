@@ -110,7 +110,7 @@
             // 实时同步事件
             editor.addEventListener('input', handleInput);
             editor.addEventListener('scroll', syncScroll);
-            editor.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keydown', handleKeyDown);
             editor.addEventListener('keyup', updateCursor);
             editor.addEventListener('mouseup', updateCursor);
             
@@ -241,9 +241,10 @@
                 typewriter.index++;
                 typewriter.timeoutId = setTimeout(typeCharacter, 100);
                 updateCursor();
-            } else {
-                finishTypewriter();
-            }
+            } 
+            // else {
+            //     finishTypewriter();
+            // }
         }
 
         function finishTypewriter() {
@@ -265,6 +266,7 @@
             });
             
             finishTypewriter();
+            editor.focus();
         }
 
         // 快捷键绑定
